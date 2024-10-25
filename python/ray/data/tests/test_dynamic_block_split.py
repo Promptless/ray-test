@@ -501,6 +501,9 @@ def test_block_slicing(
         ),
         override_num_blocks=num_tasks,
     ).materialize()
+
+    print(f">>> [DBG] test_block_slicing {ds._plan}")
+
     assert ds._plan.initial_num_blocks() == expected_num_blocks
 
     block_sizes = []
