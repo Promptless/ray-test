@@ -92,6 +92,7 @@ serve.run(app, _local_testing_mode=True)
 Alternatively, you can set the environment variable `RAY_SERVE_FORCE_LOCAL_TESTING_MODE=1` to force local testing mode for all `serve.run` invocations.
 
 In local testing mode, deployments run in the local process, which enables faster development iterations and the use of debugging tools like PDB. However, some features like converting deployment responses to Ray object references are not supported in this mode.
+
 ## Testing on a remote cluster
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
