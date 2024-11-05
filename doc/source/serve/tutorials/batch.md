@@ -34,7 +34,7 @@ This function must also be `async def` so that you can handle multiple queries c
 ```python
 @serve.batch
 async def my_batch_handler(self, requests: List):
-    pass
+pass
 ```
 
 The batch handler can then be called from another `async def` method in your deployment.
@@ -43,15 +43,15 @@ they were a normal function call:
 
 ```python
 class BatchingDeployment:
-    @serve.batch
-    async def my_batch_handler(self, requests: List):
-        results = []
-        for request in requests:
-            results.append(request.json())
-        return results
+@serve.batch
+async def my_batch_handler(self, requests: List):
+results = []
+for request in requests:
+results.append(request.json())
+return results
 
-    async def __call__(self, request):
-        return await self.my_batch_handler(request)
+async def __call__(self, request):
+return await self.my_batch_handler(request)
 ```
 
 :::{note}
@@ -97,20 +97,20 @@ import numpy as np
 
 @ray.remote
 def send_query(text):
-    resp = requests.get("http://localhost:8000/?text={}".format(text))
-    return resp.text
+resp = requests.get("http://localhost:8000/?text={}".format(text))
+return resp.text
 
 # Use Ray to send all queries in parallel
 texts = [
-    'Once upon a time,',
-    'Hi my name is Lewis and I like to',
-    'My name is Mary, and my favorite',
-    'My name is Clara and I am',
-    'My name is Julien and I like to',
-    'Today I accidentally',
-    'My greatest wish is to',
-    'In a galaxy far far away',
-    'My best talent is',
+'Once upon a time,',
+'Hi my name is Lewis and I like to',
+'My name is Mary, and my favorite',
+'My name is Clara and I am',
+'My name is Julien and I like to',
+'Today I accidentally',
+'My greatest wish is to',
+'In a galaxy far far away',
+'My best talent is',
 ]
 results = ray.get([send_query.remote(text) for text in texts])
 print("Result returned:", results)
@@ -124,23 +124,23 @@ query independently, Ray Serve evaluates them in batches.
 (pid=...) Our input array has length: 4
 (pid=...) Our input array has length: 4
 Result returned: [
-    'Once upon a time, when I got to look at and see the work of my parents (I still can\'t stand them,) they said, "Boys, you\'re going to like it if you\'ll stay away from him or make him look',
+'Once upon a time, when I got to look at and see the work of my parents (I still can\'t stand them,) they said, "Boys, you\'re going to like it if you\'ll stay away from him or make him look',
 
-    "Hi my name is Lewis and I like to look great. When I'm not playing against, it's when I play my best and always feel most comfortable. I get paid by the same people who make my games, who work hardest for me.", 
+"Hi my name is Lewis and I like to look great. When I'm not playing against, it's when I play my best and always feel most comfortable. I get paid by the same people who make my games, who work hardest for me.",
 
-    "My name is Mary, and my favorite person in these two universes, the Green Lantern and the Red Lantern, are the same, except they're two of the Green Lanterns, but they also have their own different traits. Now their relationship is known", 
+"My name is Mary, and my favorite person in these two universes, the Green Lantern and the Red Lantern, are the same, except they're two of the Green Lanterns, but they also have their own different traits. Now their relationship is known",
 
-    'My name is Clara and I am married and live in Philadelphia. I am an English language teacher and translator. I am passionate about the issues that have so inspired me and my journey. My story begins with the discovery of my own child having been born', 
+'My name is Clara and I am married and live in Philadelphia. I am an English language teacher and translator. I am passionate about the issues that have so inspired me and my journey. My story begins with the discovery of my own child having been born',
 
-    'My name is Julien and I like to travel with my son on vacations... In fact I really prefer to spend more time with my son."\n\nIn 2011, the following year he was diagnosed with terminal Alzheimer\'s disease, and since then,', 
+'My name is Julien and I like to travel with my son on vacations... In fact I really prefer to spend more time with my son."\n\nIn 2011, the following year he was diagnosed with terminal Alzheimer\'s disease, and since then,',
 
-    "Today I accidentally got lost and went on another tour in August. My story was different, but it had so many emotions that it made me happy. I'm proud to still be able to go back to Oregon for work.\n\nFor the longest", 
+"Today I accidentally got lost and went on another tour in August. My story was different, but it had so many emotions that it made me happy. I'm proud to still be able to go back to Oregon for work.\n\nFor the longest",
 
-    'My greatest wish is to return your loved ones to this earth where they can begin their own free and prosperous lives. This is true only on occasion as it is not intended or even encouraged to be so.\n\nThe Gospel of Luke 8:29', 
+'My greatest wish is to return your loved ones to this earth where they can begin their own free and prosperous lives. This is true only on occasion as it is not intended or even encouraged to be so.\n\nThe Gospel of Luke 8:29',
 
-    'In a galaxy far far away, the most brilliant and powerful beings known would soon enter upon New York, setting out to restore order to the state. When the world turned against them, Darth Vader himself and Obi-Wan Kenobi, along with the Jedi', 
+'In a galaxy far far away, the most brilliant and powerful beings known would soon enter upon New York, setting out to restore order to the state. When the world turned against them, Darth Vader himself and Obi-Wan Kenobi, along with the Jedi',
 
-    'My best talent is that I can make a movie with somebody who really has a big and strong voice. I do believe that they would be great writers. I can tell you that to make sure."\n\n\nWith this in mind, "Ghostbusters'
+'My best talent is that I can make a movie with somebody who really has a big and strong voice. I do believe that they would be great writers. I can tell you that to make sure."\n\n\nWith this in mind, "Ghostbusters'
 ]
 ```
 
@@ -156,8 +156,7 @@ to the Python script `tutorial_batch.py`:
 ```python
 from ray.serve.handle import DeploymentHandle
 
-handle: DeploymentHandle = serve.run(generator)
-)
+handle: DeploymentHandle = serve.run(generator, _local_testing_mode=True)
 ```
 
 Generally, to enqueue a query, you can call `handle.method.remote(data)`. This call 
@@ -166,15 +165,15 @@ retrieve the result. Add the following to the same Python script.
 
 ```python
 input_batch = [
-    'Once upon a time,',
-    'Hi my name is Lewis and I like to',
-    'My name is Mary, and my favorite',
-    'My name is Clara and I am',
-    'My name is Julien and I like to',
-    'Today I accidentally',
-    'My greatest wish is to',
-    'In a galaxy far far away',
-    'My best talent is',
+'Once upon a time,',
+'Hi my name is Lewis and I like to',
+'My name is Mary, and my favorite',
+'My name is Clara and I am',
+'My name is Julien and I like to',
+'Today I accidentally',
+'My greatest wish is to',
+'In a galaxy far far away',
+'My best talent is',
 ]
 print("Input batch is", input_batch)
 
