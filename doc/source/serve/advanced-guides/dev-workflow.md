@@ -79,6 +79,19 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 
 Note that rerunning `serve run` will redeploy all deployments. To prevent redeploying those deployments whose code hasn't changed, you can use `serve deploy`; see the [Production Guide](serve-in-production) for details.
 
+### Local Testing Mode
+
+Ray Serve now supports a local testing mode that allows you to run your deployments locally for faster development and testing. This mode can be enabled by setting the `_local_testing_mode` flag to `True` in the `serve.run` function. This feature is particularly useful for writing unit tests for your application and model composition logic.
+
+To enable local testing mode, you can modify your `serve.run` call as follows:
+
+```python
+serve.run(local_dev:app, _local_testing_mode=True)
+```
+
+In local testing mode, user code for each deployment will be run in a background thread, and the existing `DeploymentHandle` code will work seamlessly. This mode also supports the use of tools like PDB for debugging.
+
+Note: Local testing mode is currently a private feature and may not support all functionalities available in the standard mode.
 ## Testing on a remote cluster
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
