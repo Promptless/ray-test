@@ -20,7 +20,7 @@ RLlib works with several different types of environments, including `Farama-Foun
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gymnasium `environment name <https://gymnasium.farama.org/>`__.
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.dev/>`__.
 Custom env classes passed directly to the algorithm must take a single ``env_config`` parameter in their constructor:
 
 .. code-block:: python
@@ -101,56 +101,13 @@ Performance
 
     Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
 
-There are two ways to scale experience collection with Gymnasium environments:
-.. tip::
-
-   When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
-
+There are two ways to scale experience collection with Gym environments:
 Gymnasium
 ----------
 
 RLlib uses Gymnasium as its environment interface for single-agent training. For more information on how to implement a custom Gymnasium environment, see the `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
 
-Performance
-~~~~~~~~~~~
-
-.. tip::
-
-    Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
-
-There are two ways to scale experience collection with Gym environments:
-
-    1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
-
-      You can configure ``{"num_envs_per_env_runner": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/rllib/env/vector_env.py>`__.
-
-    2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_env_runners": N}`` config.
-
-.. image:: images/throughput.png
-
-You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_env_runner=64``.
-
-Expensive Environments
-~~~~~~~~~~~~~~~~~~~~~~
-
-Some environments may be very resource-intensive to create. RLlib will create ``num_env_runners + 1`` copies of the environment since one copy is needed for the driver process. To avoid paying the extra overhead of the driver copy, which is needed to access the env's action and observation spaces, you can defer environment initialization until ``reset()`` is called.
-
-Vectorized
-----------
-
-RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_env_runner`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
-
-Note that auto-vectorization only applies to policy inference by default. This means that policy inference will be batched, but your envs will still be stepped one at a time. If you would like your envs to be stepped in parallel, you can set ``"remote_worker_envs": True``. This will create env instances in Ray actors and step them in parallel. These remote processes introduce communication overheads, so this only helps if your env is very expensive to step / reset.
-
-When using remote envs, you can control the batching level for inference with ``remote_env_batch_wait_ms``. The default value of 0ms means envs execute asynchronously and inference is only batched opportunistically. Setting the timeout to a large value will result in fully batched inference and effectively synchronous environment stepping. The optimal value depends on your environment step / reset time, and model inference speed.
-
-Multi-Agent and Hierarchical
-----------------------------
-
-In a multi-agent environment, there are more than one "agent" acting simultaneously, in a turn-based fashion, or in a combination of these two.
-
-For example, in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment,
-acting simultaneously. Whereas in a board game, you may have two or more agents acting in a turn-base fashion.
+Note: With the recent update, ensure that your environment specifications and imports are compatible with Gymnasium version 1.0.0. For example, if you are using Atari environments, you should now use the `ale_py` prefix, such as `ale_py:ALE/Pong-v5`, instead of the previous `ALE/Pong-v5`.
 When using remote envs, you can control the batching level for inference with ``remote_env_batch_wait_ms``. The default value of 0ms means envs execute asynchronously and inference is only batched opportunistically. Setting the timeout to a large value will result in fully batched inference and effectively synchronous environment stepping. The optimal value depends on your environment step / reset time, and model inference speed.
 
 Multi-Agent and Hierarchical
@@ -229,6 +186,53 @@ And another example, where agents step one after the other (turn-based game):
     # ... {
     # ...   "player1": [[...]],
     # ... }
+And another example, where agents step one after the other (turn-based game):
+
+.. code-block:: python
+
+    # Env, in which two agents step in sequence (tuen-based game).
+    # The env is in charge of the produced agent ID. Our env here produces
+    # agent IDs: "player1" and "player2".
+    env = TicTacToe()
+
+    # Observations are a dict mapping agent names to their obs. Only those
+    # agents' names that require actions in the next call to `step()` should
+    # be present in the returned observation dict (here: one agent at a time).
+    print(env.reset())
+    # ... {
+    # ...   "player1": [[...]],
+    # ... }
+
+    # In the following call to `step`, only those agents' actions should be
+    # provided that were present in the returned obs dict:
+    new_obs, rewards, dones, infos = env.step(actions={"player1": ...})
+
+    # Similarly, new_obs, rewards, dones, etc. also become dicts.
+    # Note that only in the `rewards` dict, any agent may be listed (even those that have
+    # not(!) acted in the `step()` call). Rewards for individual agents will be added
+    # up to the point where a new action for that agent is needed. This way, you may
+    # implement a turn-based 2-player game, in which player-2's reward is published
+    # in the `rewards` dict immediately after player-1 has acted.
+    print(rewards)
+    # ... {"player1": 0, "player2": 0}
+
+    # Individual agents can early exit; The entire episode is done when
+    # dones["__all__"] = True.
+    print(dones)
+    # ... {"player1": False, "__all__": False}
+
+    # In the next step, it's player2's turn. Therefore, `new_obs` only container
+    # this agent's ID:
+    print(new_obs)
+    # ... {
+    # ...   "player2": [[...]]
+    # ... }
+
+
+If all the agents will be using the same algorithm class to train, then you can setup multi-agent training as follows:
+
+.. code-block:: python
+
     algo = pg.PGAgent(env="my_multiagent_env", config={
         "multiagent": {
             "policies": {

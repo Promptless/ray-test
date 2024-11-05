@@ -1,4 +1,3 @@
-
 .. include:: /_includes/rllib/we_are_hiring.rst
 
 .. include:: /_includes/rllib/new_api_stack.rst
@@ -95,53 +94,22 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Train via Ray Tune.
             tune.run("PPO", config=config)
+    # Create rollout workers as Ray actors.
+    workers = [RolloutWorker.remote() for _ in range(num_workers)]
 
+    # Gather experiences in parallel.
+    trajectories = ray.get([worker.sample.remote() for worker in workers])
 
-RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Algorithm classes leverage parallel iterators to implement the desired computation pattern.
-The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
+    # Concatenate the trajectories.
+    batch = concat(trajectories)
 
-.. figure:: images/a2c-arch.svg
+    # Learn on the trajectory batch.
+    policy.learn_on_batch(batch)
 
-    Synchronous Sampling (e.g., A2C, PG, PPO)
-
-RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster.
-You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_env_runners`` parameter.
-See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
-
-
-RL Modules
-----------
-
-`RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
-In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
-reinforcement learning: Exploration, inference and training.
-A minimal RL Module can contain a single neural network and define its exploration-, inference- and
-training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
-implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
-where their exploration and inference logic is used to sample from an environment.
-The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
-where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
-contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
-
-.. image:: images/rllib-concepts-rlmodules-sketch.png
-
-
-.. note::
-
-    RL Modules are currently in alpha stage. They are wrapped in legacy :py:class:`~ray.rllib.policy.Policy` objects
-    to be used in :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` for sampling.
-    This should be transparent to the user, but the following
-    `Policy Evaluation <key-concepts.html#policy-evaluation>`__ section still refers to these legacy Policy objects.
-
-.. policy-evaluation:
-
-Policy Evaluation
------------------
-
-Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
-
+    # Broadcast the updated policy weights to the workers.
+    weights = policy.get_weights()
+    ray.get([worker.set_weights.remote(weights) for worker in workers])
+```
 You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `EnvRunnerGroup <https://github.com/ray-project/ray/blob/master/rllib/env/env_runner_group.py>`__).
 
 Here is an example of creating a set of rollout workers and using them gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
@@ -200,6 +168,21 @@ sample batches are collected separately for each individual policy.
 These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
+Training Step Method (``Algorithm.training_step()``)
+----------------------------------------------------
+
+.. TODO all training_step snippets below must be tested
+.. note::
+    It's important to have a good understanding of the basic :ref:`ray core methods <core-walkthrough>` before reading this section.
+    Furthermore, we utilize concepts such as the ``SampleBatch`` (and its more advanced sibling: the ``MultiAgentBatch``),
+    ``RolloutWorker``, and ``Algorithm``, which can be read about on this page
+    and the :ref:`rollout worker reference docs <rolloutworker-reference-docs>`.
+
+    Finally, developers who are looking to implement custom algorithms should familiarize themselves with the :ref:`Policy <rllib-policy-walkthrough>` and
+    :ref:`Model <rllib-models-walkthrough>` classes.
+
+What is it?
+~~~~~~~~~~~
 Training Step Method (``Algorithm.training_step()``)
 ----------------------------------------------------
 
@@ -286,6 +269,15 @@ In the first step, we collect trajectory data from the environment(s):
                         worker_set=self.env_runner_group,
                         max_env_steps=self.config["train_batch_size"]
                     )
+Let's further break down our above ``training_step()`` code.
+In the first step, we collect trajectory data from the environment(s):
+
+.. code-block:: python
+
+    train_batch = synchronous_parallel_sample(
+                        worker_set=self.env_runner_group,
+                        max_env_steps=self.config["train_batch_size"]
+                    )
 
 Here, ``self.env_runner_group`` is a set of ``EnvRunners`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
@@ -363,8 +355,6 @@ By default, in RLlib, we create a set of workers that can be used for sampling a
 We create a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object inside of ``setup`` which is called when an RLlib algorithm is created. The :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has a ``local_worker``
 and ``remote_workers`` if ``num_env_runners > 0`` in the experiment config. In RLlib we typically use ``local_worker``
 for training and ``remote_workers`` for sampling.
-
-
 :ref:`Train Ops <train-ops-docs>`:
 These are methods that improve the policy and update workers. The most basic operator, ``train_one_step``, takes in as
 input a batch of experiences and emits a ``ResultDict`` with metrics as output. For training with GPUs, use

@@ -82,15 +82,17 @@ Using the getter APIs of SingleAgentEpisode
 
 Now that there is a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` to work with, one can explore
 and extract information from this episode using its different "getter" methods:
-```
+
+.. note::
+
+    The `SingleAgentEpisode` class now includes an `is_reset` property, which returns `True` if the `add_env_reset()` method has been called. This can be useful for checking whether an episode has been initialized with a reset observation.
 **(Single-agent) Episode**: The episode starts with a single observation (the "reset observation"), then
 continues on each timestep with a 3-tuple of `(observation, action, reward)`. Note that because of the reset observation,
 every episode - at each timestep - always contains one more observation than it contains actions or rewards.
-Important additional properties of an Episode are its `id_` (str) and `terminated/truncated` (bool) flags.
+Important additional properties of an Episode are its `id_` (str), `terminated/truncated` (bool) flags, and `is_reset` (bool) flag indicating whether the episode has been reset.
 See further below for a detailed description of the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
 APIs exposed to the user.
 
-A new property `is_reset` has been added to the `SingleAgentEpisode` class, which returns `True` if the `add_env_reset()` method has already been called. This property helps in determining whether the episode has been reset.
 
 Using the getter APIs of SingleAgentEpisode
 -------------------------------------------

@@ -1,3 +1,4 @@
+
 .. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-advanced-api-doc:
@@ -102,24 +103,6 @@ These callbacks have access to state for the current
 Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``,
 and ``on_train_result`` are also places where custom postprocessing can be applied to
 intermediate data or results.
-```
-.. literalinclude:: ./doc_code/advanced_api.py
-   :language: python
-   :start-after: __rllib-adv_api_counter_begin__
-   :end-before: __rllib-adv_api_counter_end__
-
-Ray actors provide high levels of performance, so in more complex cases they can be
-used implement communication patterns such as parameter servers and all-reduce.
-
-Callbacks and Custom Metrics
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can provide callbacks to be called at points during policy evaluation.
-These callbacks have access to state for the current
-`episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__.
-Certain callbacks such as ``on_postprocess_trajectory``, ``on_sample_end``,
-and ``on_train_result`` are also places where custom postprocessing can be applied to
-intermediate data or results.
 
 User-defined state can be stored for the
 `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__
@@ -187,18 +170,6 @@ e.g.:
    :start-after: __rllib-adv_api_explore_begin__
    :end-before: __rllib-adv_api_explore_end__
 
-The following table lists all built-in Exploration sub-classes and the agents
-that currently use these by default:
-
-.. View table below at: https://docs.google.com/drawings/d/1dEMhosbu7HVgHEwGBuMlEDyPiwjqp_g6bZ0DzCMaoUM/edit?usp=sharing
-.. image:: images/rllib-exploration-api-table.svg
-
-An Exploration class implements the ``get_exploration_action`` method,
-in which the exact exploratory behavior is defined.
-It takes the model’s output, the action distribution class, the model itself,
-a timestep (the global env-sampling steps already taken),
-and an ``explore`` switch and outputs a tuple of a) action and
-b) log-likelihood:
 The following table lists all built-in Exploration sub-classes and the agents
 that currently use these by default:
 
@@ -288,33 +259,61 @@ rewards with different settings (for example, with exploration turned off, or on
 of environment configurations). You can activate evaluating policies during training
 (``Algorithm.train()``) by setting the ``evaluation_interval`` to an int value (> 0)
 indicating every how many ``Algorithm.train()`` calls an "evaluation step" should be run:
-    .. literalinclude:: ./doc_code/advanced_api.py
-   :language: python
-   :start-after: __rllib-adv_api_evaluation_4_begin__
-   :end-before: __rllib-adv_api_evaluation_4_end__
-
-Note: The evaluation step will not be exactly the same length as the training step, but
-it will be close. This is useful for ensuring that evaluation does not become a bottleneck
-when running in parallel.
-
-You can also customize the evaluation process by providing a custom evaluation function
-via the ``custom_eval_function`` config key. This function takes the current Algorithm
-instance and the evaluation workers as arguments and can return a custom evaluation result
-dict. This allows for more complex evaluation logic, such as evaluating on a different
-set of environments or using a different set of metrics.
 
 .. literalinclude:: ./doc_code/advanced_api.py
    :language: python
-   :start-after: __rllib-adv_api_evaluation_5_begin__
-   :end-before: __rllib-adv_api_evaluation_5_end__
+   :start-after: __rllib-adv_api_evaluation_1_begin__
+   :end-before: __rllib-adv_api_evaluation_1_end__
 
-In this example, the custom evaluation function sets different corridor lengths for
-different evaluation workers, allowing for evaluation on different environment configurations.
-The evaluation results are then logged alongside the training results.
+An evaluation step runs - using its own ``EnvRunner`` instances - for ``evaluation_duration``
+episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can take values
+of either ``"episodes"`` (default) or ``"timesteps"``.
 
-For more information on customizing the evaluation process, see the documentation for
-the ``custom_eval_function`` config key in the RLlib API reference.
-```
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_2_begin__
+   :end-before: __rllib-adv_api_evaluation_2_end__
+
+Note: When using ``evaluation_duration_unit=timesteps`` and your ``evaluation_duration``
+setting isn't divisible by the number of evaluation workers (configurable with
+``evaluation_num_env_runners``), RLlib rounds up the number of time-steps specified to
+the nearest whole number of time-steps that is divisible by the number of evaluation
+workers.
+Also, when using ``evaluation_duration_unit=episodes`` and your
+``evaluation_duration`` setting isn't divisible by the number of evaluation workers
+(configurable with ``evaluation_num_env_runners``), RLlib runs the remainder of episodes
+on the first n evaluation EnvRunners and leave the remaining workers idle for that time.
+
+For example:
+
+.. literalinclude:: ./doc_code/advanced_api.py
+   :language: python
+   :start-after: __rllib-adv_api_evaluation_3_begin__
+   :end-before: __rllib-adv_api_evaluation_3_end__
+
+Before each evaluation step, weights from the main model are synchronized
+to all evaluation workers.
+
+By default, the evaluation step (if there is one in the current iteration) is run
+right **after** the respective training step.
+For example, for ``evaluation_interval=1``, the sequence of events is:
+``train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...``.
+Here, the indices show the version of neural network weights used.
+``train(0->1)`` is an update step that changes the weights from version 0 to
+version 1 and ``eval(1)`` then uses weights version 1.
+Weights index 0 represents the randomly initialized weights of the neural network.
+
+Another example: For ``evaluation_interval=2``, the sequence is:
+``train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...``.
+
+Instead of running ``train``- and ``eval``-steps in sequence, it is also possible to
+run them in parallel with the ``evaluation_parallel_to_training=True`` config setting.
+In this case, both training- and evaluation steps are run at the same time using multi-threading.
+This can speed up the evaluation process significantly, but leads to a 1-iteration
+delay between reported training- and evaluation results.
+The evaluation results are behind in this case b/c they use slightly outdated
+model weights (synchronized after the previous training step).
+
 For example, for ``evaluation_parallel_to_training=True`` and ``evaluation_interval=1``,
 the sequence is now:
 ``train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)``,
@@ -384,21 +383,6 @@ object and an :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object 
 See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
-There is also an end-to-end example of how to set up a custom online evaluation in
-`custom_evaluation.py <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__.
-Note that if you only want to evaluate your policy at the end of training,
-you can set ``evaluation_interval: [int]``, where ``[int]`` should be the number
-of training iterations before stopping.
-
-Below are some examples of how the custom evaluation metrics are reported nested under
-the ``evaluation`` key of normal training results:
-
-.. TODO make sure these outputs are still valid.
-.. code-block:: bash
-
-    ------------------------------------------------------------------------
-    Sample output for `python custom_evaluation.py --no-custom-eval`
-    ------------------------------------------------------------------------
 There is also an end-to-end example of how to set up a custom online evaluation in
 `custom_evaluation.py <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__.
 Note that if you only want to evaluate your policy at the end of training,

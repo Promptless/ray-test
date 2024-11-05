@@ -76,6 +76,22 @@ and some special options for Atari environments:
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
+Default Model Config Settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the following paragraphs, we will first describe RLlib's default behavior for automatically constructing
+models (if you don't setup a custom one), then dive into how you can customize your models by changing these
+settings or writing your own model classes.
+
+By default, RLlib will use the following config settings for your models.
+These include options for the ``FullyConnectedNetworks`` (``fcnet_hiddens`` and ``fcnet_activation``),
+``VisionNetworks`` (``conv_filters`` and ``conv_activation``), auto-RNN wrapping, auto-Attention (`GTrXL <https://arxiv.org/abs/1910.06764>`__) wrapping,
+and some special options for Atari environments:
+
+.. literalinclude:: ../../../rllib/models/catalog.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
 
 The dict above (or an overriding sub-set) is handed to the Algorithm via the ``model`` key within
 the main config dict like so:
@@ -118,6 +134,10 @@ Thereby, always make sure that the last Conv2D output has an output shape of ``[
 X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this isn't the case.
 
 
+.. _auto_lstm_and_attention:
+
+Built-in auto-LSTM, and auto-Attention Wrappers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. _auto_lstm_and_attention:
 
 Built-in auto-LSTM, and auto-Attention Wrappers
@@ -197,6 +217,24 @@ register and specify your sub-class in the config as follows:
 
 Custom TensorFlow Models
 ````````````````````````
+# Override `reward` to custom process the original reward coming
+        # from the env.
+        def reward(self, reward):
+            # E.g. simple clipping between min and max.
+            return np.clip(reward, self.min, self.max)
+
+
+Custom Models: Implementing your own Forward Logic
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you would like to provide your own model logic (instead of using RLlib's built-in defaults), you
+can sub-class either ``TFModelV2`` (for TensorFlow) or ``TorchModelV2`` (for PyTorch) and then
+register and specify your sub-class in the config as follows:
+
+.. _tensorflow-models:
+
+Custom TensorFlow Models
+````````````````````````
 
 Custom TensorFlow models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/tf/tf_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
 ``forward()`` takes a dict of tensor inputs (mapping str to Tensor types), whose keys and values depend on
@@ -257,6 +295,7 @@ Usually, the dict contains only the current observation ``obs`` and an ``is_trai
 states (in case of RNNs or attention nets). You can also override extra methods of the model such as ``value_function`` to implement
 a custom value branch.
 
+Additional supervised/self-supervised losses can be added via the ``TorchModelV2.custom_loss`` method:
 Additional supervised/self-supervised losses can be added via the ``TorchModelV2.custom_loss`` method:
 
 See these examples of `fully connected <https://github.com/ray-project/ray/blob/master/rllib/models/torch/fcnet.py>`__, `convolutional <https://github.com/ray-project/ray/blob/master/rllib/models/torch/visionnet.py>`__, and `recurrent <https://github.com/ray-project/ray/blob/master/rllib/models/torch/recurrent_net.py>`__ torch models.
@@ -331,6 +370,17 @@ Implementing custom Attention Networks
 
 Similar to the RNN case described above, you could also implement your own attention-based networks, instead of using the
 ``use_attention: True`` flag in your model config.
+You can check out the `rnn_model.py <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/rnn_model.py>`__ models as examples to implement
+your own (either TF or Torch).
+
+
+.. _attention:
+
+Implementing custom Attention Networks
+``````````````````````````````````````
+
+Similar to the RNN case described above, you could also implement your own attention-based networks, instead of using the
+``use_attention: True`` flag in your model config.
 
 See RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
 (for `TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__)
@@ -377,6 +427,20 @@ into one flat **1D** array, and then pick a fully connected network (by default)
 process this flattened vector. This is usually ok, if you have only 1D Box or
 Discrete/MultiDiscrete sub-spaces in your observations.
 
+However, what if you had a complex observation space with one or more image components in
+it (besides 1D Boxes and discrete spaces). You would probably want to preprocess each of the
+image components using some convolutional network, and then concatenate their outputs
+with the remaining non-image (flat) inputs (the 1D Box and discrete/one-hot components).
+
+Take a look at this model example that does exactly that:
+
+.. literalinclude:: ../../../rllib/models/tf/complex_input_net.py
+   :language: python
+   :start-after: __sphinx_doc_begin__
+   :end-before: __sphinx_doc_end__
+
+
+**Using the Trajectory View API: Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
 However, what if you had a complex observation space with one or more image components in
 it (besides 1D Boxes and discrete spaces). You would probably want to preprocess each of the
 image components using some convolutional network, and then concatenate their outputs
@@ -464,26 +528,61 @@ You can also use the ``custom_loss()`` API to add in self-supervised losses such
 
 Variable-length / Complex Observation Spaces
 --------------------------------------------
+   class ParametricActionsModel(TFModelV2):
+       def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+           super(ParametricActionsModel, self).__init__(obs_space, action_space, num_outputs, model_config, name)
+           self.action_embed_model = FullyConnectedNetwork(
+               Box(-1, 1, shape=(action_embedding_sz, )),
+               action_space,
+               action_embedding_sz,
+               model_config,
+               name + "_action_embed")
+           self.action_logits_model = FullyConnectedNetwork(
+               obs_space["real_obs"],
+               action_space,
+               num_outputs,
+               model_config,
+               name + "_action_logits")
 
-RLlib supports complex and variable-length observation spaces, including ``gym.spaces.Tuple``, ``gym.spaces.Dict``, and ``rllib.utils.spaces.Repeated``. The handling of these spaces is transparent to the user. RLlib internally will insert preprocessors to insert padding for repeated elements, flatten complex observations into a fixed-size vector during transit, and unpack the vector into the structured tensor before sending it to the model. The flattened observation is available to the model as ``input_dict["obs_flat"]``, and the unpacked observation as ``input_dict["obs"]``.
+       def forward(self, input_dict, state, seq_lens):
+           action_mask = input_dict["obs"]["action_mask"]
+           avail_actions = input_dict["obs"]["avail_actions"]
+           real_obs = input_dict["obs"]["real_obs"]
 
-To enable batching of struct observations, RLlib unpacks them in a `StructTensor-like format <https://github.com/tensorflow/community/blob/master/rfcs/20190910-struct-tensor.md>`__. In summary, repeated fields are "pushed down" and become the outer dimensions of tensor batches, as illustrated in this figure from the StructTensor RFC.
+           action_embed = self.action_embed_model({"obs": avail_actions})
+           action_logits = self.action_logits_model({"obs": real_obs})
 
-.. image:: images/struct-tensor.png
+           # Compute dot product between action embeddings and logits
+           action_logits = tf.reduce_sum(action_logits * action_embed, axis=-1)
 
-For further information about complex observation spaces, see:
-  * A custom environment and model that uses `repeated struct fields <https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py>`__.
-  * The pydoc of the `Repeated space <https://github.com/ray-project/ray/blob/master/rllib/utils/spaces/repeated.py>`__.
-  * The pydoc of the batched `repeated values tensor <https://github.com/ray-project/ray/blob/master/rllib/models/repeated_values.py>`__.
-  * The `unit tests <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__ for Tuple and Dict spaces.
+           # Mask out invalid actions
+           inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
+           return action_logits + inf_mask, state
+```
 
-Variable-length / Parametric Action Spaces
-------------------------------------------
+3. Finally, the custom model can be registered and used with an RLlib algorithm:
 
-Custom models can be used to work with environments where (1) the set of valid actions `varies per step <https://neuro.cs.ut.ee/the-use-of-embeddings-in-openai-five>`__, and/or (2) the number of valid actions is `very large <https://arxiv.org/abs/1811.00260>`__. The general idea is that the meaning of actions can be completely conditioned on the observation, i.e., the ``a`` in ``Q(s, a)`` becomes just a token in ``[0, MAX_AVAIL_ACTIONS)`` that only has meaning in the context of ``s``. This works with algorithms in the `DQN and policy-gradient families <rllib-env.html>`__ and can be implemented as follows:
+.. code-block:: python
 
-1. The environment should return a mask and/or list of valid action embeddings as part of the observation for each step. To enable batching, the number of actions can be allowed to vary from 1 to some max number:
+   ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
+   config = {
+       "env": MyParamActionEnv,
+       "model": {
+           "custom_model": "pa_model",
+       },
+       ...
+   }
+   algo = PPO(config=config)
+   algo.train()
 
+Note: The above example uses TensorFlow, but similar logic can be applied for PyTorch models.
+
+Gymnasium Compatibility
+-----------------------
+
+RLlib now supports environments and models using the `gymnasium` library, which is a fork of the original `gym` library. This includes support for the latest `gymnasium` version 1.0.0. Ensure that your custom environments and models are compatible with `gymnasium` by updating import statements and using the new API where necessary. For example, replace `import gym` with `import gymnasium as gym` and update any environment registration or creation logic accordingly.
+
+For more information on transitioning to `gymnasium`, refer to the `gymnasium` documentation and migration guides. This update ensures that RLlib remains compatible with the latest advancements in the reinforcement learning ecosystem.
 .. code-block:: python
 
    class MyParamActionEnv(gym.Env):
@@ -551,6 +650,10 @@ Autoregressive Action Distributions
 -----------------------------------
 
 In an action space with multiple components (e.g., ``Tuple(a1, a2)``), you might want ``a2`` to be conditioned on the sampled value of ``a1``, i.e., ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Normally, ``a1`` and ``a2`` would be sampled independently, reducing the expressivity of the policy.
+Autoregressive Action Distributions
+-----------------------------------
+
+In an action space with multiple components (e.g., ``Tuple(a1, a2)``), you might want ``a2`` to be conditioned on the sampled value of ``a1``, i.e., ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Normally, ``a1`` and ``a2`` would be sampled independently, reducing the expressivity of the policy.
 
 To do this, you need both a custom model that implements the autoregressive pattern, and a custom action distribution class that leverages that model. The `autoregressive_action_dist.py <https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py>`__ example shows how this can be implemented for a simple binary action space. For a more complex space, a more efficient architecture such as a `MADE <https://arxiv.org/abs/1502.03509>`__ is recommended. Note that sampling a `N-part` action requires `N` forward passes through the model, however computing the log probability of an action can be done in one pass:
 
@@ -607,6 +710,27 @@ To do this, you need both a custom model that implements the autoregressive patt
                     "This model only supports the [2, 2] action space")
 
             # Inputs
+            obs_input = tf.keras.layers.Input(
+                shape=obs_space.shape, name="obs_input")
+            a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
+            ctx_input = tf.keras.layers.Input(
+                shape=(num_outputs, ), name="ctx_input")
+
+            # Output of the model (normally 'logits', but for an autoregressive
+            # dist this is more like a context/feature layer encoding the obs)
+            context = tf.keras.layers.Dense(
+                num_outputs,
+                name="hidden",
+                activation=tf.nn.tanh,
+                kernel_initializer=normc_initializer(1.0))(obs_input)
+
+            # P(a1 | obs)
+            a1_logits = tf.keras.layers.Dense(
+                2,
+                name="a1_logits",
+                activation=None,
+                kernel_initializer=normc_initializer(0.01))(ctx_input)
+# Inputs
             obs_input = tf.keras.layers.Input(
                 shape=obs_space.shape, name="obs_input")
             a1_input = tf.keras.layers.Input(shape=(1, ), name="a1_input")
