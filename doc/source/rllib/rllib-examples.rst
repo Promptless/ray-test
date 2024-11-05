@@ -87,6 +87,17 @@ Connectors
    but by stacking the observations on-the-fly using `EnvToModule` and `LearnerConnector` pipelines.
    This method of framestacking is more efficient as it avoids having to send large observation
    tensors through the network (ray).
+.. note::
+    RLlib's Connector API has been re-written from scratch for the new API stack (|new_stack|).
+    Connector-pieces and -pipelines are now referred to as :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
+    (as opposed to ``Connector``, which only continue to work on the old API stack |old_stack|).
+
+
+- |new_stack| `How to frame-stack Atari image observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__:
+   An example using Atari framestacking in a very efficient manner, not in the environment itself (as a `gym.Wrapper`),
+   but by stacking the observations on-the-fly using `EnvToModule` and `LearnerConnector` pipelines.
+   This method of framestacking is more efficient as it avoids having to send large observation
+   tensors through the network (ray).
 
 - |new_stack| `How to mean/std-filter observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__:
    An example of a :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` that filters all observations from the environment using a
@@ -130,6 +141,13 @@ Environments
 
 - |new_stack| `How to set up rendering (and recording) of the environment trajectories during training with WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
    Example showing how you can render and record episode trajectories of your gymnasium envs and log the videos to WandB.
+Environments
+------------
+- |new_stack| `How to register a custom gymnasium environment <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
+   Example showing how to write your own RL environment using ``gymnasium`` and register it to run train your algorithm against this env with RLlib.
+
+- |new_stack| `How to set up rendering (and recording) of the environment trajectories during training with WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
+   Example showing how you can render and record episode trajectories of your gymnasium envs and log the videos to WandB. Note: The environment names have been updated to use the `ale_py` prefix for Atari environments.
 
 - |old_stack| `How to run a Unity3D multi-agent environment locally <https://github.com/ray-project/ray/tree/master/rllib/examples/envs/external_envs/unity3d_env_local.py>`__:
    Example of how to setup an RLlib Algorithm against a locally running Unity3D editor instance to
@@ -158,6 +176,23 @@ Evaluation
 - |new_stack| `How to run evaluation in parallel to training <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/evaluation_parallel_to_training.py>`__:
    Example showing how the evaluation workers and the "normal" rollout workers can run (to some extend) in parallel to speed up training.
 
+GPU (for Training and Sampling)
+-------------------------------
+
+- |new_stack| `How to use fractional GPUs for training an RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__:
+   If your model is small and easily fits on a single GPU and you want to therefore train
+   other models alongside it to save time and cost, this script shows you how to set up
+   your RLlib config with a fractional number of GPUs on the learner (model training)
+   side.
+
+Hierarchical Training
+---------------------
+
+- |old_stack| `How to setup hierarchical training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
+   Example of hierarchical training using the multi-agent API.
+
+Inference (of Models/Policies)
+------------------------------
 GPU (for Training and Sampling)
 -------------------------------
 
@@ -207,7 +242,6 @@ Multi-Agent RL
    Example of running a custom hand-coded policy alongside trainable policies.
 - |new_stack| `How to train a single policy (weight sharing) controlling more than one agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
-
 - |old_stack| `Hwo to write and set up a model with centralized critic <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.
 - |old_stack| `How to write and set up a model with centralized critic in the env <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__:
@@ -248,6 +282,14 @@ RLModules
 
 - |new_stack| `How to configure an autoregressive action distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
    Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
+- |new_stack| `How to Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
+   How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
+
+RLModules
+---------
+
+- |new_stack| `How to configure an autoregressive action distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/autoregressive_actions.py>`__:
+   Learning with an auto-regressive action distribution (for example, two action components, where distribution of the second component depends on the first's actually sampled value).
 
 - |old_stack| `How to train with parametric actions <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/parametric_actions_cartpole.py>`__:
    Example of how to handle variable-length or parametric action spaces.
@@ -273,6 +315,17 @@ contains python config files (yaml for the old API stack) that can be executed a
 all other example scripts described here in order to run tuned learning experiments
 for the different algorithms and different environment types.
 
+For example, see this tuned Atari example for PPO, which learns to solve the Pong environment
+in roughly 5min. It can be run like this on a single g5.24xlarge (or g6.24xlarge) machine with
+4 GPUs and 96 CPUs:
+
+.. code-block:: bash
+
+    $ cd ray/rllib/tuned_examples/ppo
+    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
+
+Note that some of the files in this folder are used for RLlib's daily or weekly
+release tests as well.
 For example, see this tuned Atari example for PPO, which learns to solve the Pong environment
 in roughly 5min. It can be run like this on a single g5.24xlarge (or g6.24xlarge) machine with
 4 GPUs and 96 CPUs:
@@ -323,6 +376,8 @@ Community Examples
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
 
+Blog Posts
+++++++++++
 Blog Posts
 ++++++++++
 

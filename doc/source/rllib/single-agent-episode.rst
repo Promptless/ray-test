@@ -82,6 +82,21 @@ Using the getter APIs of SingleAgentEpisode
 
 Now that there is a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` to work with, one can explore
 and extract information from this episode using its different "getter" methods:
+```
+**(Single-agent) Episode**: The episode starts with a single observation (the "reset observation"), then
+continues on each timestep with a 3-tuple of `(observation, action, reward)`. Note that because of the reset observation,
+every episode - at each timestep - always contains one more observation than it contains actions or rewards.
+Important additional properties of an Episode are its `id_` (str) and `terminated/truncated` (bool) flags.
+See further below for a detailed description of the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
+APIs exposed to the user.
+
+A new property `is_reset` has been added to the `SingleAgentEpisode` class, which returns `True` if the `add_env_reset()` method has already been called. This property helps in determining whether the episode has been reset.
+
+Using the getter APIs of SingleAgentEpisode
+-------------------------------------------
+
+Now that there is a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` to work with, one can explore
+and extract information from this episode using its different "getter" methods:
 
 .. figure:: images/episodes/sa_episode_getters.svg
     :width: 750
@@ -134,6 +149,25 @@ To illustrate the differences between the data stored in a non-finalized episode
 a finalized one, take a look at this complex observation example here, showing the exact same observation data in two
 episodes (one non-finalized the other finalized):
 
+.. figure:: images/episodes/sa_episode_non_finalized.svg
+    :width: 800
+    :align: left
+
+    **Complex observations in a non-finalized episode**: Each individual observation is a (complex) dict matching the
+    gym environment's observation space. There are three such observation items stored in the episode so far.
+
+.. figure:: images/episodes/sa_episode_finalized.svg
+    :width: 600
+    :align: left
+
+    **Complex observations in a finalized episode**: The entire observation record is a single (complex) dict matching the
+    gym environment's observation space. At the leafs of the structure are `NDArrays` holding the individual values of the leaf.
+    Note that these `NDArrays` have an extra batch dim (axis=0), whose length matches the length of the episode stored (here 3).
+
+
+
+Episode.cut() and lookback buffers
+----------------------------------
 .. figure:: images/episodes/sa_episode_non_finalized.svg
     :width: 800
     :align: left
