@@ -12,6 +12,7 @@ Benefits:
 
 - Self-contained Python is convenient for writing local integration tests.
 - No need to deploy to a cloud provider or manage infrastructure.
+- Supports a `_local_testing_mode` for faster development iterations and testing.
 
 Drawbacks:
 
