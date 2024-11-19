@@ -1,7 +1,3 @@
-There are no changes between the original content and the proposed changes. Therefore, the content remains the same.
-
-```
-
 (serve-key-concepts)=
 
 # Key Concepts

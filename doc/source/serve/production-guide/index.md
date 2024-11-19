@@ -119,15 +119,6 @@ Test the application using Python `requests`:
 
 To update the application, modify the config file and use `serve deploy` again.
 
-### Local Testing Mode
-
-For faster development iterations and easier debugging, you can enable the local testing mode by setting the environment variable `RAY_SERVE_FORCE_LOCAL_TESTING_MODE`. This mode allows for in-process deployment, which can significantly speed up the testing process. To enable this mode, set the environment variable before running your application:
-
-```bash
-export RAY_SERVE_FORCE_LOCAL_TESTING_MODE=1
-```
-
-This feature is particularly useful for writing unit tests for your application and model composition logic.
 ## Next Steps
 
 For a deeper dive into how to deploy, update, and monitor Serve applications, see the following pages:
