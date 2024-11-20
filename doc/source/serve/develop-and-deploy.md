@@ -6,6 +6,7 @@ The flow for developing a Ray Serve application locally and deploying it in prod
 
 * Converting a Machine Learning model into a Ray Serve application
 * Testing the application locally
+  * Use `serve.run` with the `_local_testing_mode` flag for unit testing your application logic. This allows for faster iterations by running deployments in-process.
 * Building Serve config files for production deployment
 * Deploying applications using a config file
 
