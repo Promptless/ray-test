@@ -102,29 +102,12 @@ Performance
     Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
 
 There are two ways to scale experience collection with Gym environments:
-
-    1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
-
-      You can configure ``{"num_envs_per_env_runner": M}`` to have RLlib create ``M`` concurrent environments per worker. RLlib auto-vectorizes Gym environments via `VectorEnv.wrap() <https://github.com/ray-project/ray/blob/master/rllib/env/vector_env.py>`__.
-
-    2. **Distribute across multiple processes:** You can also have RLlib create multiple processes (Ray actors) for experience collection. In most algorithms this can be controlled by setting the ``{"num_env_runners": N}`` config.
-
-.. image:: images/throughput.png
-
-You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_env_runner=64``.
-
-Expensive Environments
-~~~~~~~~~~~~~~~~~~~~~~
-
-Some environments may be very resource-intensive to create. RLlib will create ``num_env_runners + 1`` copies of the environment since one copy is needed for the driver process. To avoid paying the extra overhead of the driver copy, which is needed to access the env's action and observation spaces, you can defer environment initialization until ``reset()`` is called.
-
-Vectorized
+Gymnasium
 ----------
 
-RLlib will auto-vectorize Gym envs for batch evaluation if the ``num_envs_per_env_runner`` config is set, or you can define a custom environment class that subclasses `VectorEnv <https://github.com/ray-project/ray/blob/master/rllib/env/vector_env.py>`__ to implement ``vector_step()`` and ``vector_reset()``.
+RLlib uses Gymnasium as its environment interface for single-agent training. For more information on how to implement a custom Gymnasium environment, see the `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
 
-Note that auto-vectorization only applies to policy inference by default. This means that policy inference will be batched, but your envs will still be stepped one at a time. If you would like your envs to be stepped in parallel, you can set ``"remote_worker_envs": True``. This will create env instances in Ray actors and step them in parallel. These remote processes introduce communication overheads, so this only helps if your env is very expensive to step / reset.
-
+Note: With the recent update, ensure that your environment specifications and imports are compatible with Gymnasium version 1.0.0. For example, if you are using Atari environments, you should now use the `ale_py` prefix, such as `ale_py:ALE/Pong-v5`, instead of the previous `ALE/Pong-v5`.
 When using remote envs, you can control the batching level for inference with ``remote_env_batch_wait_ms``. The default value of 0ms means envs execute asynchronously and inference is only batched opportunistically. Setting the timeout to a large value will result in fully batched inference and effectively synchronous environment stepping. The optimal value depends on your environment step / reset time, and model inference speed.
 
 Multi-Agent and Hierarchical
@@ -187,6 +170,22 @@ Here is an example of an env, in which all agents always step simultaneously:
     # ... {"car_2": True, "__all__": False}
 
 
+And another example, where agents step one after the other (turn-based game):
+
+.. code-block:: python
+
+    # Env, in which two agents step in sequence (tuen-based game).
+    # The env is in charge of the produced agent ID. Our env here produces
+    # agent IDs: "player1" and "player2".
+    env = TicTacToe()
+
+    # Observations are a dict mapping agent names to their obs. Only those
+    # agents' names that require actions in the next call to `step()` should
+    # be present in the returned observation dict (here: one agent at a time).
+    print(env.reset())
+    # ... {
+    # ...   "player1": [[...]],
+    # ... }
 And another example, where agents step one after the other (turn-based game):
 
 .. code-block:: python
@@ -272,6 +271,13 @@ To exclude some policies in your ``multiagent.policies`` dictionary, you can use
 For example, you may want to have one or more random (non learning) policies interact with your learning ones:
 
 .. code-block:: python
+while True:
+        print(algo.train())
+
+To exclude some policies in your ``multiagent.policies`` dictionary, you can use the ``multiagent.policies_to_train`` setting.
+For example, you may want to have one or more random (non learning) policies interact with your learning ones:
+
+.. code-block:: python
 
 
     # Example for a mapping function that maps agent IDs "player1" and "player2" to either
@@ -313,6 +319,14 @@ RLlib will create three distinct policies and route agent decisions to its bound
 When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to.
 RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
+in which you can vary the number of agents and policies in the environment.
+For how to use multiple training methods at once (here DQN and PPO),
+see the `two-algorithm example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_algorithms.py>`__.
+Metrics are reported for each policy separately, for example:
+
+.. code-block:: bash
+   :emphasize-lines: 6,14,22
 Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
 in which you can vary the number of agents and policies in the environment.
 For how to use multiple training methods at once (here DQN and PPO),
@@ -381,6 +395,16 @@ The `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project
 and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__ examples demonstrate several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
 
 .. figure:: images/rock-paper-scissors.png
+A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__
+
+
+Rock Paper Scissors Example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
+and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__ examples demonstrate several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
+
+.. figure:: images/rock-paper-scissors.png
 
     TensorBoard output of running the rock-paper-scissors example, where a learned policy faces off between a random selection of the same-move and beat-last-move heuristics. Here the performance of heuristic policies vs the learned policy is compared with LSTM enabled (blue) and a plain feed-forward policy (red). While the feedforward policy can easily beat the same-move heuristic by simply avoiding the last move taken, it takes a LSTM policy to distinguish between and consistently beat both policies.
 
@@ -427,6 +451,12 @@ The most general way of implementing a centralized critic involves defining the 
 
 To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
 
+**Strategy 2: Sharing observations through an observation function**:
+
+Alternatively, you can use an observation function to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use the observation func (i.e., like an env wrapper) and custom model. However, it is a bit less principled in that you have to change the agent observation spaces to include training-time only information. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+
+Grouping Agents
+~~~~~~~~~~~~~~~
 **Strategy 2: Sharing observations through an observation function**:
 
 Alternatively, you can use an observation function to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use the observation func (i.e., like an env wrapper) and custom model. However, it is a bit less principled in that you have to change the agent observation spaces to include training-time only information. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
@@ -487,6 +517,15 @@ In many situations, it does not make sense for an environment to be "stepped" by
 
 .. figure:: images/rllib-training-inside-a-unity3d-env.png
     :scale: 75 %
+See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.
+
+External Agents and Applications
+--------------------------------
+
+In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** (e.g. Unity3D, other game engines, or the Gazebo robotics simulator) that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
+
+.. figure:: images/rllib-training-inside-a-unity3d-env.png
+    :scale: 75 %
 
     A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
@@ -534,6 +573,23 @@ You can configure any Algorithm to launch a policy server with the following con
         "num_env_runners": 0,
     }
 
+Clients can then connect in either *local* or *remote* inference mode.
+In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time.
+This allows actions to be computed by the client without requiring a network round trip each time.
+In remote inference mode, each computed action requires a network call to the server.
+
+Example:
+
+.. code-block:: python
+
+    client = PolicyClient("http://localhost:9900", inference_mode="local")
+    episode_id = client.start_episode()
+    ...
+    action = client.get_action(episode_id, cur_obs)
+    ...
+    client.end_episode(episode_id, last_obs)
+
+To understand the difference between standard envs, external envs, and connecting with a ``PolicyClient``, refer to the following figure:
 Clients can then connect in either *local* or *remote* inference mode.
 In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time.
 This allows actions to be computed by the client without requiring a network round trip each time.
